@@ -17,7 +17,11 @@ import {
   DollarSign,
   QrCode,
   X,
-  Printer
+  Printer,
+  Trash2,
+  AlertTriangle,
+  Crown,
+  Pencil
 } from 'lucide-react';
 import { BarberTenant } from '../types/barber';
 import { QRCodeCanvas } from './QRCodeCanvas';
@@ -27,6 +31,8 @@ interface MasterAdminScreenProps {
   tenants: BarberTenant[];
   onAddTenant: (newTenant: BarberTenant, tempPass: string) => void;
   onToggleStatus: (tenantId: string) => void;
+  onDeleteTenant?: (tenantId: string) => void;
+  onUpdateTenant?: (updatedTenant: BarberTenant) => void;
   onImpersonateTenant: (tenantId: string) => void;
   onTestClientLink?: (slug: string) => void;
   onLogout: () => void;
@@ -36,6 +42,8 @@ export const MasterAdminScreen: React.FC<MasterAdminScreenProps> = ({
   tenants,
   onAddTenant,
   onToggleStatus,
+  onDeleteTenant,
+  onUpdateTenant,
   onImpersonateTenant,
   onTestClientLink,
   onLogout,
@@ -44,10 +52,13 @@ export const MasterAdminScreen: React.FC<MasterAdminScreenProps> = ({
   const [slug, setSlug] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [plan, setPlan] = useState<'Starter' | 'Pro' | 'Enterprise'>('Pro');
+  const [plan, setPlan] = useState<'Starter' | 'Pro' | 'Enterprise' | 'Vitalício'>('Pro');
   const [search, setSearch] = useState('');
   const [selectedQrTenant, setSelectedQrTenant] = useState<BarberTenant | null>(null);
   const [copiedQrUrl, setCopiedQrUrl] = useState(false);
+  const [tenantToDelete, setTenantToDelete] = useState<BarberTenant | null>(null);
+  const [tenantToEdit, setTenantToEdit] = useState<BarberTenant | null>(null);
+  const [editForm, setEditForm] = useState<BarberTenant | null>(null);
 
   // Temp credential modal
   const [createdTenantData, setCreatedTenantData] = useState<{
@@ -94,7 +105,7 @@ export const MasterAdminScreen: React.FC<MasterAdminScreenProps> = ({
       status: 'ativa',
       plan,
       createdAt: new Date().toISOString().split('T')[0],
-      monthlyRevenue: plan === 'Starter' ? 79 : plan === 'Pro' ? 149 : 249,
+      monthlyRevenue: plan === 'Starter' ? 79 : plan === 'Pro' ? 149 : plan === 'Enterprise' ? 249 : 0,
       totalAppointments: 0,
       themeColor: 'amber',
       slogan: 'Excelência em cada detalhe',
@@ -115,7 +126,7 @@ export const MasterAdminScreen: React.FC<MasterAdminScreenProps> = ({
     setEmail('');
     setPhone('');
 
-    alert(`Barbearia cadastrada com sucesso!\nLogin do Dono: ${shopEmail}\nSenha Temporária: ${tempPassword}`);
+    alert(`Barbearia cadastrada com sucesso!\nLogin do Dono: ${shopEmail}\nSenha Temporária: ${tempPassword}\nPlano: ${plan}`);
   };
 
   const copyCredentials = () => {
@@ -124,11 +135,58 @@ export const MasterAdminScreen: React.FC<MasterAdminScreenProps> = ({
 Barbearia: ${createdTenantData.tenant.name}
 Painel: https://barbersaas.com/${createdTenantData.tenant.slug}
 E-mail: ${createdTenantData.tenant.email}
-Senha Provisória: ${createdTenantData.tempPass}`;
+Senha Provisória: ${createdTenantData.tempPass}
+Plano: ${createdTenantData.tenant.plan}`;
 
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editForm) return;
+
+    const trimmedName = editForm.name.trim();
+    const sanitizedSlug = editForm.slug.trim().toLowerCase().replace(/\s+/g, '-');
+
+    if (!trimmedName || !sanitizedSlug) {
+      alert('Nome da barbearia e Subdomínio/Slug são obrigatórios.');
+      return;
+    }
+
+    if (
+      tenants.some(
+        (t) => t.id !== editForm.id && t.slug.toLowerCase() === sanitizedSlug
+      )
+    ) {
+      alert('Este identificador (slug) já está em uso por outro inquilino.');
+      return;
+    }
+
+    const updated: BarberTenant = {
+      ...editForm,
+      name: trimmedName,
+      slug: sanitizedSlug,
+      email: editForm.email.trim(),
+      phone: editForm.phone.trim(),
+      monthlyRevenue:
+        editForm.plan === 'Starter'
+          ? 79
+          : editForm.plan === 'Pro'
+          ? 149
+          : editForm.plan === 'Enterprise'
+          ? 249
+          : 0,
+      logoLetter: trimmedName.charAt(0).toUpperCase() || 'B',
+    };
+
+    if (onUpdateTenant) {
+      onUpdateTenant(updated);
+    }
+
+    setTenantToEdit(null);
+    setEditForm(null);
   };
 
   const filteredTenants = tenants.filter(
@@ -138,9 +196,12 @@ Senha Provisória: ${createdTenantData.tempPass}`;
   );
 
   const totalMRR = tenants.reduce((acc, t) => {
-    const fee = t.plan === 'Starter' ? 79 : t.plan === 'Pro' ? 149 : 249;
+    const fee = t.plan === 'Starter' ? 79 : t.plan === 'Pro' ? 149 : t.plan === 'Enterprise' ? 249 : 0;
     return acc + fee;
   }, 0);
+
+  const lifetimeTenants = tenants.filter((t) => t.plan === 'Vitalício');
+  const totalLifetimeRevenue = lifetimeTenants.length * 1499;
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans">
@@ -192,6 +253,19 @@ Senha Provisória: ${createdTenantData.tempPass}`;
 
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4">
             <div className="flex items-center justify-between text-neutral-400 mb-2">
+              <span className="text-xs font-medium">Planos Vitalícios</span>
+              <Crown className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-amber-400">
+              {lifetimeTenants.length} <span className="text-sm font-normal text-neutral-400">({totalLifetimeRevenue > 0 ? `R$ ${totalLifetimeRevenue.toLocaleString('pt-BR')}` : 'R$ 0'})</span>
+            </div>
+            <span className="text-[11px] text-neutral-400 mt-1 block">
+              Compras Definitivas do App
+            </span>
+          </div>
+
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4">
+            <div className="flex items-center justify-between text-neutral-400 mb-2">
               <span className="text-xs font-medium">Agendamentos Totais</span>
               <TrendingUp className="w-4 h-4 text-indigo-400" />
             </div>
@@ -200,19 +274,6 @@ Senha Provisória: ${createdTenantData.tempPass}`;
             </div>
             <span className="text-[11px] text-neutral-400 mt-1 block">
               Processados via BarberSaaS
-            </span>
-          </div>
-
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4">
-            <div className="flex items-center justify-between text-neutral-400 mb-2">
-              <span className="text-xs font-medium">SLA & Disponibilidade</span>
-              <Sparkles className="w-4 h-4 text-blue-400" />
-            </div>
-            <div className="text-2xl font-bold font-mono tabular-nums text-blue-400">
-              99.98%
-            </div>
-            <span className="text-[11px] text-neutral-400 mt-1 block">
-              Zero interrupções hoje
             </span>
           </div>
         </div>
@@ -308,6 +369,7 @@ Senha Provisória: ${createdTenantData.tempPass}`;
                   <option value="Starter">Starter (R$ 79/mês - 1 a 2 barbeiros)</option>
                   <option value="Pro">Pro (R$ 149/mês - Até 6 barbeiros + Fidelidade)</option>
                   <option value="Enterprise">Enterprise (R$ 249/mês - Ilimitado + Multi-unidade)</option>
+                  <option value="Vitalício">👑 Vitalício (R$ 1.499,00 - Compra Definitiva do App / Sem Mensalidades)</option>
                 </select>
               </div>
             </div>
@@ -332,7 +394,7 @@ Senha Provisória: ${createdTenantData.tempPass}`;
                   <span>Nova Barbearia Provisionada com Sucesso!</span>
                 </div>
                 <p className="text-xs text-neutral-300 mt-1">
-                  Barbearia: <strong>{createdTenantData.tenant.name}</strong> ({createdTenantData.tenant.plan})
+                  Barbearia: <strong>{createdTenantData.tenant.name}</strong> ({createdTenantData.tenant.plan === 'Vitalício' ? '👑 Licença Vitalícia' : `Plano ${createdTenantData.tenant.plan}`})
                 </p>
                 <div className="mt-2 text-xs font-mono text-neutral-300 bg-neutral-900/90 p-3 rounded-lg border border-neutral-800 space-y-1">
                   <div>E-mail de Acesso: <span className="text-emerald-300 font-bold">{createdTenantData.tenant.email}</span></div>
@@ -370,7 +432,12 @@ Senha Provisória: ${createdTenantData.tempPass}`;
         {/* Tabela de Barbearias Ativas e Acessos */}
         <div className="bg-white p-6 rounded-xl shadow text-gray-900">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 mb-3 border-b border-gray-200 gap-3">
-            <h3 className="font-bold text-lg text-gray-900 mb-0">Barbearias Ativas e Acessos</h3>
+            <div className="flex items-center gap-3">
+              <h3 className="font-bold text-lg text-gray-900 mb-0">Barbearias Ativas e Acessos</h3>
+              <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-semibold">
+                {tenants.length} cadastradas
+              </span>
+            </div>
 
             <div className="relative w-full sm:w-64">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -388,7 +455,7 @@ Senha Provisória: ${createdTenantData.tempPass}`;
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-100 text-xs uppercase text-gray-600">
-                  <th className="p-3">Nome</th>
+                  <th className="p-3">Nome & Plano</th>
                   <th className="p-3">Acesso Administrativo (Login)</th>
                   <th className="p-3 text-center">QR Code do Cliente (Subdomínio)</th>
                 </tr>
@@ -407,7 +474,7 @@ Senha Provisória: ${createdTenantData.tempPass}`;
 
                     return (
                       <tr key={shop.id} className="border-b text-sm align-middle hover:bg-gray-50/80 transition-colors">
-                        {/* 1. Nome */}
+                        {/* 1. Nome & Plano */}
                         <td className="p-3 font-semibold">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-lg bg-amber-500 text-white font-bold flex items-center justify-center shrink-0 shadow-sm">
@@ -416,9 +483,16 @@ Senha Provisória: ${createdTenantData.tempPass}`;
                             <div>
                               <span className="font-bold text-gray-900 text-sm block">{shop.name}</span>
                               <div className="flex items-center gap-2 mt-0.5">
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
-                                  {shop.plan}
-                                </span>
+                                {shop.plan === 'Vitalício' ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1 shadow-xs">
+                                    <Crown className="w-3 h-3 text-amber-600" />
+                                    <span>Vitalício (Comprado)</span>
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                                    {shop.plan}
+                                  </span>
+                                )}
                                 <span
                                   className={`px-1.5 py-0.5 rounded text-[10px] font-semibold inline-flex items-center gap-1 ${
                                     shop.status === 'ativa'
@@ -444,7 +518,7 @@ Senha Provisória: ${createdTenantData.tempPass}`;
                           <span className="text-xs text-indigo-600 block mt-1 break-all">
                             Link de Entrada: {clientTargetUrl}
                           </span>
-                          <div className="flex items-center gap-2 pt-2">
+                          <div className="flex flex-wrap items-center gap-2 pt-2">
                             <button
                               onClick={() => onImpersonateTenant(shop.id)}
                               title="Acessar painel administrativo desta barbearia"
@@ -456,9 +530,33 @@ Senha Provisória: ${createdTenantData.tempPass}`;
                             <button
                               onClick={() => onToggleStatus(shop.id)}
                               className="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors cursor-pointer text-[11px] font-medium flex items-center gap-1"
+                              title={shop.status === 'ativa' ? 'Pausar barbearia' : 'Ativar barbearia'}
                             >
                               <Power className="w-3 h-3" />
                               <span>{shop.status === 'ativa' ? 'Pausar' : 'Ativar'}</span>
+                            </button>
+
+                            {/* Ícone de LÁPIS para EDITAR */}
+                            <button
+                              onClick={() => {
+                                setTenantToEdit(shop);
+                                setEditForm({ ...shop });
+                              }}
+                              title="Editar dados da barbearia"
+                              className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors cursor-pointer text-[11px] font-medium flex items-center gap-1 border border-blue-200 shadow-2xs"
+                            >
+                              <Pencil className="w-3 h-3 text-blue-600" />
+                              <span>Editar</span>
+                            </button>
+
+                            {/* Ícone da LIXEIRA para EXCLUIR */}
+                            <button
+                              onClick={() => setTenantToDelete(shop)}
+                              title="Excluir barbearia"
+                              className="px-2 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors cursor-pointer text-[11px] font-medium flex items-center gap-1 border border-red-200 shadow-2xs"
+                            >
+                              <Trash2 className="w-3 h-3 text-red-600" />
+                              <span>Excluir</span>
                             </button>
                           </div>
                         </td>
@@ -494,6 +592,237 @@ Senha Provisória: ${createdTenantData.tempPass}`;
             </table>
           </div>
         </div>
+
+        {/* Modal de Confirmação de Exclusão de Inquilino */}
+        {tenantToDelete && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl text-left relative text-gray-900 border border-red-200 animate-fade-in">
+              <div className="flex items-center gap-3 text-red-600 mb-3">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-gray-900">Excluir Inquilino</h4>
+                  <p className="text-xs text-red-600 font-medium">Ação irreversível de exclusão</p>
+                </div>
+              </div>
+
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 mb-4 text-xs text-red-900 space-y-1">
+                <p>Você está prestes a excluir permanentemente:</p>
+                <p className="font-bold text-sm text-gray-900">💈 {tenantToDelete.name} ({tenantToDelete.slug})</p>
+                <p className="text-gray-600">E-mail: {tenantToDelete.email}</p>
+                <p className="text-gray-600 flex items-center gap-1">
+                  Plano: {tenantToDelete.plan === 'Vitalício' ? '👑 Vitalício (Licença Comprada)' : tenantToDelete.plan}
+                </p>
+              </div>
+
+              <p className="text-xs text-gray-600 mb-5 leading-relaxed">
+                Esta ação apagará todos os dados vinculados a este inquilino, incluindo barbeiros cadastrados, catálogo de serviços, cupons e histórico de agendamentos.
+              </p>
+
+              <div className="flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setTenantToDelete(null)}
+                  className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onDeleteTenant) {
+                      onDeleteTenant(tenantToDelete.id);
+                    }
+                    setTenantToDelete(null);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition-all shadow-md shadow-red-600/30 cursor-pointer flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Confirmar Exclusão</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Edição de Barbearia (Inquilino) */}
+        {tenantToEdit && editForm && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl text-left relative text-gray-900 border border-gray-200 animate-fade-in max-h-[92vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
+                <div className="flex items-center gap-2.5 text-blue-600">
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+                    <Pencil className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-base font-bold text-gray-900">Editar Dados da Barbearia</h4>
+                    <p className="text-xs text-gray-500">Atualize informações cadastrais, plano ou dados de acesso</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setTenantToEdit(null);
+                    setEditForm(null);
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEdit} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                      Nome da Barbearia *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs text-gray-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                      Subdomínio / Slug *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editForm.slug}
+                      onChange={(e) => setEditForm({ ...editForm, slug: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs font-mono text-gray-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                      E-mail Administrativo
+                    </label>
+                    <input
+                      type="email"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs text-gray-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                      Contato / WhatsApp
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs text-gray-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                      Plano do SaaS
+                    </label>
+                    <select
+                      value={editForm.plan}
+                      onChange={(e) => setEditForm({ ...editForm, plan: e.target.value as any })}
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs text-gray-900 focus:outline-none focus:border-blue-600"
+                    >
+                      <option value="Starter">Starter (R$ 79/mês - 1 a 2 barbeiros)</option>
+                      <option value="Pro">Pro (R$ 149/mês - Até 6 barbeiros + Fidelidade)</option>
+                      <option value="Enterprise">Enterprise (R$ 249/mês - Ilimitado)</option>
+                      <option value="Vitalício">👑 Vitalício (R$ 1.499 - Compra Definitiva do App)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                      Status da Operação
+                    </label>
+                    <select
+                      value={editForm.status}
+                      onChange={(e) => setEditForm({ ...editForm, status: e.target.value as any })}
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs text-gray-900 focus:outline-none focus:border-blue-600"
+                    >
+                      <option value="ativa">Ativa</option>
+                      <option value="teste">Período de Teste</option>
+                      <option value="suspensa">Suspensa / Pausada</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                      Slogan / Frase da Marca
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.slogan || ''}
+                      onChange={(e) => setEditForm({ ...editForm, slogan: e.target.value })}
+                      placeholder="Ex: Tradição e Estilo"
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs text-gray-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                      Chave PIX
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.pixKey || ''}
+                      onChange={(e) => setEditForm({ ...editForm, pixKey: e.target.value })}
+                      placeholder="contato@barbearia.com"
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs text-gray-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                    Endereço Completo
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.address || ''}
+                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                    placeholder="Rua, Número, Bairro, Cidade - UF"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs text-gray-900 focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2.5 pt-3 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTenantToEdit(null);
+                      setEditForm(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-md shadow-blue-600/30 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Salvar Alterações</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Modal de QR Code para Impressão & Divulgação */}
         {selectedQrTenant && (

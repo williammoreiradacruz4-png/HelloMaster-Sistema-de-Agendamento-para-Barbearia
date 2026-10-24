@@ -7,6 +7,7 @@ interface WhatsAppModalProps {
   clientName: string;
   clientPhone: string;
   defaultMessage: string;
+  onMessageSent?: (text: string) => void;
 }
 
 export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
@@ -15,9 +16,15 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   clientName,
   clientPhone,
   defaultMessage,
+  onMessageSent,
 }) => {
   const [message, setMessage] = useState(defaultMessage);
   const [copied, setCopied] = useState(false);
+
+  // Sync defaultMessage when it changes
+  React.useEffect(() => {
+    setMessage(defaultMessage);
+  }, [defaultMessage]);
 
   if (!isOpen) return null;
 
@@ -81,7 +88,10 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               href={waUrl}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={onClose}
+              onClick={() => {
+                if (onMessageSent) onMessageSent(message);
+                onClose();
+              }}
               className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-emerald-950"
             >
               <Send className="w-3.5 h-3.5" />

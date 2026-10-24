@@ -7,6 +7,7 @@ import {
   ClientRecord,
   Appointment,
   UserAccount,
+  WhatsAppMessageLog,
 } from '../types/barber';
 
 import barberInteriorImg from '../assets/images/barbershop_interior_1791312515543.jpg';
@@ -624,5 +625,65 @@ export const INITIAL_APPOINTMENTS: Appointment[] = [
     finalPrice: 25,
     status: 'Confirmado',
     createdAt: '2026-10-05',
+  },
+];
+
+export const INITIAL_MESSAGE_LOGS: WhatsAppMessageLog[] = [
+  {
+    id: 'msg-1',
+    tenantId: 'shop-1',
+    clientName: 'Carlos Eduardo Silva',
+    clientPhone: '(11) 98888-1234',
+    type: 'confirmacao_agendamento',
+    messageText: '💈 Olá Carlos Eduardo Silva! Seu agendamento na Barbearia Don Corleone foi CONFIRMADO com sucesso para Hoje às 14:00 (Corte Degradê / Fade Moderno com Vini). Te esperamos!',
+    sentAt: '2026-10-24 09:30',
+    status: 'lida',
+    simulated: true,
+    appointmentId: 'app-1',
+  },
+  {
+    id: 'msg-2',
+    tenantId: 'shop-1',
+    clientName: 'Marcos Vinicius',
+    clientPhone: '(11) 97777-4321',
+    type: 'confirmacao_agendamento',
+    messageText: '💈 Olá Marcos Vinicius! Seu agendamento para Barba Terapia & Toalha Quente com Rodrigo foi confirmado para Hoje às 15:30. Qualquer dúvida, responda por aqui!',
+    sentAt: '2026-10-24 10:15',
+    status: 'entregue',
+    simulated: true,
+    appointmentId: 'app-2',
+  },
+  {
+    id: 'msg-3',
+    tenantId: 'shop-1',
+    clientName: 'Rodrigo Santoro',
+    clientPhone: '(11) 96555-1212',
+    type: 'lembrete_retorno',
+    messageText: '✂️ Fala Rodrigo Santoro, beleza? Já se passaram 24 dias desde o seu último corte degradê! Que tal renovar o visual e manter a régua máxima esta semana? Agende online agora com horário garantido!',
+    sentAt: '2026-10-23 16:45',
+    status: 'lida',
+    simulated: true,
+  },
+  {
+    id: 'msg-4',
+    tenantId: 'shop-1',
+    clientName: 'Roberto Almeida',
+    clientPhone: '(11) 99123-4567',
+    type: 'lembrete_retorno',
+    messageText: '✂️ Olá Roberto! Notamos que faz 28 dias do seu último alinhamento de barba e cabelo. Seu estilo merece estar sempre impecável! Clique aqui para escolher seu melhor horário com Rodrigo.',
+    sentAt: '2026-10-22 11:20',
+    status: 'lida',
+    simulated: true,
+  },
+  {
+    id: 'msg-5',
+    tenantId: 'shop-1',
+    clientName: 'Lucas Ferraz',
+    clientPhone: '(11) 98321-9988',
+    type: 'fidelidade_premio',
+    messageText: '🏆 Parabéns Lucas Ferraz! Você acaba de acumular pontos suficientes no seu cartão fidelidade da Barbearia Don Corleone. Venha retirar seu benefício exclusivo no seu próximo agendamento!',
+    sentAt: '2026-10-21 18:00',
+    status: 'entregue',
+    simulated: true,
   },
 ];

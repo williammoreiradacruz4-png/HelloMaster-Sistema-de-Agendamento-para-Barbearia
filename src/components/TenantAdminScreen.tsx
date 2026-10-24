@@ -40,6 +40,7 @@ import {
   ClientRecord,
   Appointment,
   AppointmentStatus,
+  WhatsAppMessageLog,
 } from '../types/barber';
 import barberInteriorImg from '../assets/images/barbershop_interior_1791312515543.jpg';
 import { generateOperatingHours } from '../data/mockData';
@@ -47,6 +48,7 @@ import { NewAppointmentModal } from './NewAppointmentModal';
 import { WhatsAppModal } from './WhatsAppModal';
 import { NewStaffModal } from './NewStaffModal';
 import { NewServiceModal } from './NewServiceModal';
+import { MessageHistoryTab } from './MessageHistoryTab';
 
 interface TenantAdminScreenProps {
   tenant: BarberTenant;
@@ -71,6 +73,9 @@ interface TenantAdminScreenProps {
   onUpdateAppointmentStatus: (id: string, status: AppointmentStatus) => void;
   onUpdateTenantConfig: (updated: Partial<BarberTenant>) => void;
   onOpenClientPortal: (tenantSlug: string) => void;
+  messageLogs?: WhatsAppMessageLog[];
+  onSendMessage?: (newLog: WhatsAppMessageLog) => void;
+  onDeleteMessage?: (id: string) => void;
   onLogout: () => void;
 }
 
@@ -81,6 +86,7 @@ export type TenantTab =
   | 'tenant-fidelidade'
   | 'tenant-promocoes'
   | 'tenant-clientes'
+  | 'tenant-mensagens'
   | 'tenant-configuracoes';
 
 export const TenantAdminScreen: React.FC<TenantAdminScreenProps> = ({
@@ -106,6 +112,9 @@ export const TenantAdminScreen: React.FC<TenantAdminScreenProps> = ({
   onUpdateAppointmentStatus,
   onUpdateTenantConfig,
   onOpenClientPortal,
+  messageLogs = [],
+  onSendMessage,
+  onDeleteMessage,
   onLogout,
 }) => {
   const [activeTab, setActiveTab] = useState<TenantTab>('tenant-agendamentos');
@@ -364,7 +373,7 @@ export const TenantAdminScreen: React.FC<TenantAdminScreenProps> = ({
               </h2>
               <span className="text-[11px] text-neutral-400 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                <span>Plano {tenant.plan}</span>
+                <span>{tenant.plan === 'Vitalício' ? '👑 Licença Vitalícia' : `Plano ${tenant.plan}`}</span>
               </span>
             </div>
           </div>
@@ -462,6 +471,18 @@ export const TenantAdminScreen: React.FC<TenantAdminScreenProps> = ({
           >
             <UserCheck className={`w-4 h-4 ${activeTab === 'tenant-clientes' ? themeAccentText : 'text-neutral-400'}`} />
             <span>👤 Clientes Ativos</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('tenant-mensagens')}
+            className={`w-full text-left py-2.5 px-3.5 rounded-xl transition-colors flex items-center gap-2.5 cursor-pointer ${
+              activeTab === 'tenant-mensagens'
+                ? 'bg-neutral-800 text-white font-semibold shadow-sm border border-neutral-700/60'
+                : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'
+            }`}
+          >
+            <MessageSquare className={`w-4 h-4 ${activeTab === 'tenant-mensagens' ? themeAccentText : 'text-neutral-400'}`} />
+            <span>💬 Histórico de Mensagens</span>
           </button>
 
           <button
@@ -1689,6 +1710,26 @@ export const TenantAdminScreen: React.FC<TenantAdminScreenProps> = ({
             </div>
           </section>
         )}
+
+        {/* 8ª ABA: HISTÓRICO DE MENSAGENS & NOTIFICAÇÕES WHATSAPP */}
+        {activeTab === 'tenant-mensagens' && (
+          <MessageHistoryTab
+            tenant={tenant}
+            appointments={appointments}
+            clientsList={clientsList}
+            messageLogs={messageLogs}
+            onSendMessage={(newLog) => {
+              if (onSendMessage) {
+                onSendMessage(newLog);
+              }
+            }}
+            onDeleteMessage={(id) => {
+              if (onDeleteMessage) {
+                onDeleteMessage(id);
+              }
+            }}
+          />
+        )}
       </main>
 
       {/* MODALS */}
@@ -1722,6 +1763,24 @@ export const TenantAdminScreen: React.FC<TenantAdminScreenProps> = ({
         clientName={whatsAppModalData.name}
         clientPhone={whatsAppModalData.phone}
         defaultMessage={whatsAppModalData.message}
+        onMessageSent={(text) => {
+          if (onSendMessage) {
+            const now = new Date();
+            const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const dateFormatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            onSendMessage({
+              id: `msg-wa-${Date.now()}`,
+              tenantId: tenant.id,
+              clientName: whatsAppModalData.name,
+              clientPhone: whatsAppModalData.phone,
+              type: 'confirmacao_agendamento',
+              messageText: text,
+              sentAt: `${dateFormatted} ${timeFormatted}`,
+              status: 'lida',
+              simulated: true,
+            });
+          }
+        }}
       />
     </div>
   );

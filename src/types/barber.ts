@@ -16,7 +16,7 @@ export interface BarberTenant {
   email: string;
   phone: string;
   status: 'ativa' | 'teste' | 'suspensa';
-  plan: 'Starter' | 'Pro' | 'Enterprise';
+  plan: 'Starter' | 'Pro' | 'Enterprise' | 'Vitalício';
   createdAt: string;
   monthlyRevenue: number;
   totalAppointments: number;
@@ -120,4 +120,24 @@ export interface Appointment {
   couponCode?: string;
   status: AppointmentStatus;
   createdAt: string;
+}
+
+export type MessageNotificationType =
+  | 'confirmacao_agendamento'
+  | 'lembrete_retorno'
+  | 'lembrete_horario'
+  | 'fidelidade_premio'
+  | 'personalizada';
+
+export interface WhatsAppMessageLog {
+  id: string;
+  tenantId: string;
+  clientName: string;
+  clientPhone: string;
+  type: MessageNotificationType;
+  messageText: string;
+  sentAt: string; // ISO string or formatted date
+  status: 'enviada' | 'entregue' | 'lida';
+  simulated: boolean;
+  appointmentId?: string;
 }

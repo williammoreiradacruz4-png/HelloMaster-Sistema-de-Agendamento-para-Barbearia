@@ -15,6 +15,7 @@ import {
   UserAccount,
   UserRole,
   AppointmentStatus,
+  WhatsAppMessageLog,
 } from './types/barber';
 import {
   INITIAL_USERS,
@@ -25,6 +26,7 @@ import {
   INITIAL_COUPONS,
   INITIAL_CLIENTS,
   INITIAL_APPOINTMENTS,
+  INITIAL_MESSAGE_LOGS,
 } from './data/mockData';
 import { SplashScreen } from './components/SplashScreen';
 import { LoginScreen } from './components/LoginScreen';
@@ -55,6 +57,7 @@ export default function App() {
   const [coupons, setCoupons] = useState<PromoCoupon[]>(INITIAL_COUPONS);
   const [clients, setClients] = useState<ClientRecord[]>(INITIAL_CLIENTS);
   const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
+  const [messageLogs, setMessageLogs] = useState<WhatsAppMessageLog[]>(INITIAL_MESSAGE_LOGS);
 
   // Mapeia parâmetros da URL gerados pelo escaneamento do QR Code
   React.useEffect(() => {
@@ -244,6 +247,47 @@ export default function App() {
     );
   };
 
+  const handleMasterDeleteTenant = (tenantId: string) => {
+    const tenantTarget = tenants.find((t) => t.id === tenantId);
+    const tenantName = tenantTarget ? tenantTarget.name : 'Inquilino';
+
+    // Remove inquilino e todos os dados associados
+    setTenants((prev) => prev.filter((t) => t.id !== tenantId));
+    setUsers((prev) => prev.filter((u) => u.tenantId !== tenantId));
+    setStaff((prev) => prev.filter((s) => s.tenantId !== tenantId));
+    setServices((prev) => prev.filter((s) => s.tenantId !== tenantId));
+    setAppointments((prev) => prev.filter((a) => a.tenantId !== tenantId));
+    setCoupons((prev) => prev.filter((c) => c.tenantId !== tenantId));
+    setRewards((prev) => prev.filter((r) => r.tenantId !== tenantId));
+
+    if (currentTenantId === tenantId) {
+      const remaining = tenants.filter((t) => t.id !== tenantId);
+      if (remaining.length > 0) {
+        setCurrentTenantId(remaining[0].id);
+      }
+    }
+
+    alert(`Barbearia "${tenantName}" excluída com sucesso!`);
+  };
+
+  const handleMasterUpdateTenant = (updated: BarberTenant) => {
+    setTenants((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.tenantId === updated.id) {
+          return {
+            ...u,
+            name: updated.name,
+            email: updated.email,
+            phone: updated.phone,
+          };
+        }
+        return u;
+      })
+    );
+    alert(`Barbearia "${updated.name}" atualizada com sucesso!`);
+  };
+
   const handleMasterImpersonate = (tenantId: string) => {
     setCurrentTenantId(tenantId);
     setCurrentScreen('admin-tenant');
@@ -323,6 +367,21 @@ export default function App() {
   const handleAddAppointment = (newApp: Appointment) => {
     setAppointments((prev) => [newApp, ...prev]);
 
+    // Registra notificação automática de confirmação de agendamento no histórico WhatsApp
+    const autoMsg: WhatsAppMessageLog = {
+      id: `msg-auto-${Date.now()}`,
+      tenantId: newApp.tenantId,
+      clientName: newApp.clientName,
+      clientPhone: newApp.clientPhone,
+      type: 'confirmacao_agendamento',
+      messageText: `💈 Olá ${newApp.clientName}! Seu agendamento foi CONFIRMADO com sucesso para ${newApp.date} às ${newApp.time} (${newApp.serviceName} com o profissional ${newApp.barberName}). Te esperamos!`,
+      sentAt: `${newApp.date} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+      status: 'lida',
+      simulated: true,
+      appointmentId: newApp.id,
+    };
+    setMessageLogs((prev) => [autoMsg, ...prev]);
+
     // Check if client exists in client list, otherwise create
     const existing = clients.find(
       (c) => c.phone.replace(/\D/g, '') === newApp.clientPhone.replace(/\D/g, '')
@@ -340,6 +399,14 @@ export default function App() {
       };
       setClients((prev) => [...prev, newCli]);
     }
+  };
+
+  const handleSendMessage = (newLog: WhatsAppMessageLog) => {
+    setMessageLogs((prev) => [newLog, ...prev]);
+  };
+
+  const handleDeleteMessage = (id: string) => {
+    setMessageLogs((prev) => prev.filter((m) => m.id !== id));
   };
 
   const handleUpdateAppointmentStatus = (id: string, newStatus: AppointmentStatus) => {
@@ -441,6 +508,8 @@ export default function App() {
           tenants={tenants}
           onAddTenant={handleMasterAddTenant}
           onToggleStatus={handleMasterToggleStatus}
+          onDeleteTenant={handleMasterDeleteTenant}
+          onUpdateTenant={handleMasterUpdateTenant}
           onImpersonateTenant={handleMasterImpersonate}
           onTestClientLink={handleTestClientLink}
           onLogout={handleLogout}
@@ -488,6 +557,9 @@ export default function App() {
           onUpdateAppointmentStatus={handleUpdateAppointmentStatus}
           onUpdateTenantConfig={handleUpdateTenantConfig}
           onOpenClientPortal={handleOpenClientPortal}
+          messageLogs={messageLogs}
+          onSendMessage={handleSendMessage}
+          onDeleteMessage={handleDeleteMessage}
           onLogout={handleLogout}
         />
       )}
