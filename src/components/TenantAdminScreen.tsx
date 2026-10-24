@@ -29,7 +29,12 @@ import {
   MapPin,
   Sparkles,
   ArrowRight,
-  Eye
+  Eye,
+  QrCode,
+  Copy,
+  Check,
+  Printer,
+  X
 } from 'lucide-react';
 import {
   BarberTenant,
@@ -49,9 +54,10 @@ import { WhatsAppModal } from './WhatsAppModal';
 import { NewStaffModal } from './NewStaffModal';
 import { NewServiceModal } from './NewServiceModal';
 import { MessageHistoryTab } from './MessageHistoryTab';
+import { QRCodeCanvas } from './QRCodeCanvas';
 
 interface TenantAdminScreenProps {
-  tenant: BarberTenant;
+  tenant?: BarberTenant;
   allTenants: BarberTenant[];
   onSelectTenant: (tenantId: string) => void;
   staffList: BarberStaff[];
@@ -117,12 +123,32 @@ export const TenantAdminScreen: React.FC<TenantAdminScreenProps> = ({
   onDeleteMessage,
   onLogout,
 }) => {
+  if (!tenant) {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-white flex flex-col items-center justify-center p-6 text-center">
+        <Store className="w-16 h-16 text-amber-500/60 mb-4" />
+        <h2 className="text-xl font-bold mb-2">Nenhuma Barbearia Cadastrada</h2>
+        <p className="text-neutral-400 text-sm max-w-md mb-6">
+          O sistema foi reinicializado limpo. Acesse o Painel Master com o login de Administrador (admin@master.com) para cadastrar sua barbearia.
+        </p>
+        <button
+          onClick={onLogout}
+          className="px-6 py-2.5 rounded-xl bg-amber-500 text-neutral-950 font-bold hover:bg-amber-400 transition cursor-pointer"
+        >
+          Voltar ao Login
+        </button>
+      </div>
+    );
+  }
+
   const [activeTab, setActiveTab] = useState<TenantTab>('tenant-agendamentos');
 
   // Modals state
   const [isNewAppModalOpen, setIsNewAppModalOpen] = useState(false);
   const [isNewStaffModalOpen, setIsNewStaffModalOpen] = useState(false);
   const [isNewServiceModalOpen, setIsNewServiceModalOpen] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [copiedQr, setCopiedQr] = useState(false);
   const [whatsAppModalData, setWhatsAppModalData] = useState<{
     isOpen: boolean;
     name: string;
@@ -167,13 +193,15 @@ export const TenantAdminScreen: React.FC<TenantAdminScreenProps> = ({
 
   // Sincroniza estado e identidade visual quando muda a barbearia ativa
   React.useEffect(() => {
-    setBrandName(tenant.name);
-    setBrandSlogan(tenant.slogan);
-    setBrandHours(tenant.openingHours);
-    setBrandAddress(tenant.address);
-    setBrandPix(tenant.pixKey || '');
-    setBrandColor(tenant.themeColor || 'amber');
-    setBannerFile(tenant.coverImage || null);
+    if (tenant) {
+      setBrandName(tenant.name);
+      setBrandSlogan(tenant.slogan);
+      setBrandHours(tenant.openingHours);
+      setBrandAddress(tenant.address);
+      setBrandPix(tenant.pixKey || '');
+      setBrandColor(tenant.themeColor || 'amber');
+      setBannerFile(tenant.coverImage || null);
+    }
   }, [tenant]);
 
   // Exposição global da função renderTenantSchedule para compatibilidade direta
@@ -498,22 +526,33 @@ export const TenantAdminScreen: React.FC<TenantAdminScreenProps> = ({
           </button>
         </nav>
 
-        {/* Public Booking Link Card */}
-        <div className="p-3 border-t border-neutral-800">
+        {/* Public Booking Link & QR Code Card */}
+        <div className="p-3 border-t border-neutral-800 space-y-1.5">
           <button
-            onClick={() => onOpenClientPortal(tenant.slug)}
+            onClick={() => setIsQrModalOpen(true)}
             className="w-full p-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer group"
           >
             <div className="flex items-center gap-2">
-              <Eye className="w-3.5 h-3.5 text-amber-400" />
-              <span>Ver Link do Cliente</span>
+              <QrCode className="w-3.5 h-3.5 text-amber-400" />
+              <span>QR Code da Barbearia</span>
             </div>
             <ArrowRight className="w-3.5 h-3.5 text-amber-400 group-hover:translate-x-0.5 transition-transform" />
           </button>
 
           <button
+            onClick={() => onOpenClientPortal(tenant.slug)}
+            className="w-full p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 text-xs font-medium flex items-center justify-between transition-colors cursor-pointer group"
+          >
+            <div className="flex items-center gap-2">
+              <Eye className="w-3.5 h-3.5 text-neutral-400" />
+              <span>Ver Link do Cliente</span>
+            </div>
+            <ExternalLink className="w-3.5 h-3.5 text-neutral-500" />
+          </button>
+
+          <button
             onClick={onLogout}
-            className="w-full mt-2 text-left py-2 px-3 rounded-lg text-red-400 hover:bg-red-950/30 transition-colors flex items-center gap-2 text-xs font-semibold cursor-pointer"
+            className="w-full mt-1 text-left py-2 px-3 rounded-lg text-red-400 hover:bg-red-950/30 transition-colors flex items-center gap-2 text-xs font-semibold cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>🚪 Desconectar</span>
@@ -1782,6 +1821,69 @@ export const TenantAdminScreen: React.FC<TenantAdminScreenProps> = ({
           }
         }}
       />
+
+      {/* Modal QR Code da Barbearia para Clientes */}
+      {isQrModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl text-center relative text-gray-900 animate-fade-in">
+            <button
+              onClick={() => setIsQrModalOpen(false)}
+              className="absolute right-4 top-4 p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-11 h-11 rounded-xl bg-amber-500 text-neutral-950 font-black text-xl flex items-center justify-center mx-auto mb-2 shadow-sm">
+              {tenant.logoLetter || tenant.name.charAt(0).toUpperCase()}
+            </div>
+
+            <h4 className="text-base font-bold text-gray-900">{tenant.name}</h4>
+            <p className="text-xs text-gray-500 mb-4">
+              Escaneie com a câmera do celular para se cadastrar e agendar online
+            </p>
+
+            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 inline-block mx-auto mb-4 shadow-inner">
+              <QRCodeCanvas
+                value={
+                  typeof window !== 'undefined'
+                    ? `${window.location.origin}${window.location.pathname}?barber=${tenant.slug}`
+                    : `?barber=${tenant.slug}`
+                }
+                size={200}
+              />
+            </div>
+
+            <div className="text-xs font-mono text-gray-600 bg-gray-100 py-1.5 px-3 rounded-lg border border-gray-200 mb-4 break-all select-all">
+              {typeof window !== 'undefined'
+                ? `${window.location.origin}${window.location.pathname}?barber=${tenant.slug}`
+                : `?barber=${tenant.slug}`}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}${window.location.pathname}?barber=${tenant.slug}`;
+                  navigator.clipboard.writeText(url);
+                  setCopiedQr(true);
+                  setTimeout(() => setCopiedQr(false), 2000);
+                }}
+                className="flex-1 py-2 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                {copiedQr ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedQr ? 'Link Copiado!' : 'Copiar Link'}</span>
+              </button>
+
+              <button
+                onClick={() => window.print()}
+                className="py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Imprimir QR</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

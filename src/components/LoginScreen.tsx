@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Store, User, Lock, Mail, ArrowRight, Calendar, AlertCircle } from 'lucide-react';
-import { UserRole } from '../types/barber';
+import { UserRole, BarberTenant } from '../types/barber';
 import logoHelloMaster from '../assets/hellomaster.png';
 
 interface LoginScreenProps {
+  tenants?: BarberTenant[];
   onLogin: (email: string, role: UserRole, tenantId?: string) => void;
   onNavigateToRegister: () => void;
   onNavigateToClientPortal: () => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
+  tenants = [],
   onLogin,
   onNavigateToRegister,
   onNavigateToClientPortal,
@@ -29,21 +31,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // Matching logic
+    // 1. Admin Master
     if (cleanEmail === 'admin@master.com' || cleanEmail === 'admin@barbersaas.com') {
       onLogin(cleanEmail, 'master');
-    } else if (
-      cleanEmail === 'barber@test.com' ||
-      cleanEmail === 'navalha@barbersaas.com' ||
-      cleanEmail === 'contato@vintageclub.com' ||
-      cleanEmail === 'vintage-club@barber.com' ||
-      cleanEmail.includes('adm@')
-    ) {
-      onLogin(cleanEmail, 'tenant', 'shop-1');
-    } else {
-      // Default to client login (e.g. phone@barber.com, carlos@email.com, etc.)
-      onLogin(cleanEmail, 'client', 'shop-1');
+      return;
     }
+
+    // 2. Barbeiro / Dono da Barbearia
+    const matchedTenant = tenants.find(
+      (t) =>
+        t.email.toLowerCase() === cleanEmail ||
+        `${t.slug.toLowerCase()}@barber.com` === cleanEmail ||
+        cleanEmail === `${t.slug.toLowerCase()}@admin.com`
+    );
+    if (matchedTenant) {
+      onLogin(cleanEmail, 'tenant', matchedTenant.id);
+      return;
+    }
+
+    // 3. Cliente do App
+    const targetShopId = tenants.length > 0 ? tenants[0].id : undefined;
+    onLogin(cleanEmail, 'client', targetShopId);
   };
 
   const handleQuickLogin = (role: UserRole, demoEmail: string, demoTenantId?: string) => {
@@ -165,10 +173,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
         {/* Demo Fast Switcher Box */}
         <div className="mt-6 bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-4 text-xs text-neutral-400">
-          <p className="font-semibold text-neutral-200 mb-2.5 flex items-center gap-1.5">
-            <span>⚡ Acesso Rápido para Demonstração:</span>
+          <p className="font-semibold text-neutral-200 mb-2.5 flex items-center justify-between">
+            <span className="flex items-center gap-1.5">⚡ Perfis de Acesso:</span>
+            <span className="text-[10px] text-emerald-400 font-mono">Cloud Sync Ativo</span>
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => handleQuickLogin('master', 'admin@master.com')}
@@ -176,34 +185,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             >
               <div className="flex items-center gap-1.5 font-semibold text-indigo-400 group-hover:text-indigo-300">
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Admin Master</span>
+                <span>Admin Master (Sistema)</span>
               </div>
               <p className="text-[11px] text-neutral-500 mt-0.5 truncate">admin@master.com</p>
             </button>
 
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('tenant', 'barber@test.com', 'shop-1')}
-              className="p-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 hover:border-amber-600/50 text-left transition-colors cursor-pointer group"
-            >
-              <div className="flex items-center gap-1.5 font-semibold text-amber-400 group-hover:text-amber-300">
-                <Store className="w-3.5 h-3.5" />
-                <span>Barbearia Admin</span>
+            {tenants.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('tenant', tenants[0].email, tenants[0].id)}
+                className="p-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 hover:border-amber-600/50 text-left transition-colors cursor-pointer group"
+              >
+                <div className="flex items-center gap-1.5 font-semibold text-amber-400 group-hover:text-amber-300">
+                  <Store className="w-3.5 h-3.5" />
+                  <span className="truncate">{tenants[0].name} (Admin)</span>
+                </div>
+                <p className="text-[11px] text-neutral-500 mt-0.5 truncate">{tenants[0].email}</p>
+              </button>
+            ) : (
+              <div className="p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800/50 text-neutral-500 flex flex-col justify-center">
+                <span className="text-[11px] text-neutral-400 font-medium">Nenhuma barbearia criada ainda</span>
+                <span className="text-[10px] text-neutral-600">Acesse o Admin Master para cadastrar ou cadastre-se</span>
               </div>
-              <p className="text-[11px] text-neutral-500 mt-0.5 truncate">barber@test.com</p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('client', 'carlos@email.com', 'shop-1')}
-              className="p-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 hover:border-emerald-600/50 text-left transition-colors cursor-pointer group"
-            >
-              <div className="flex items-center gap-1.5 font-semibold text-emerald-400 group-hover:text-emerald-300">
-                <User className="w-3.5 h-3.5" />
-                <span>Cliente App</span>
-              </div>
-              <p className="text-[11px] text-neutral-500 mt-0.5 truncate">carlos@email.com</p>
-            </button>
+            )}
           </div>
         </div>
       </div>

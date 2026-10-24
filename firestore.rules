@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Permite leitura e escrita em tempo real para sincronização móvel (cliente) e desktop (barbearia)
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -69,10 +69,11 @@ export const ClientPortalScreen: React.FC<ClientPortalScreenProps> = ({
   const [selectedBarber, setSelectedBarber] = useState<BarberStaff | null>(
     staffList.find((s) => s.name.toLowerCase().includes('rodrigo')) || staffList[1] || staffList[0] || null
   );
-  const [selectedDate, setSelectedDate] = useState<string>('2026-10-07');
-  const [selectedTime, setSelectedTime] = useState<string>('11:30');
-  const [clientName, setClientName] = useState(clientUser?.name || 'Carlos Henrique Silva');
-  const [clientPhone, setClientPhone] = useState(clientUser?.phone || '(11) 99123-4567');
+  const todayDateStr = new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState<string>(todayDateStr);
+  const [selectedTime, setSelectedTime] = useState<string>('14:00');
+  const [clientName, setClientName] = useState(clientUser?.name || '');
+  const [clientPhone, setClientPhone] = useState(clientUser?.phone || '');
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<PromoCoupon | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -228,6 +229,26 @@ export const ClientPortalScreen: React.FC<ClientPortalScreenProps> = ({
     setAppliedCoupon(null);
     setCouponCode('');
   };
+
+  if (!tenant) {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-white flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-amber-500 mb-4">
+          <Scissors className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold mb-2">Nenhuma Barbearia Cadastrada</h2>
+        <p className="text-sm text-neutral-400 max-w-sm mb-6">
+          Cadastre uma barbearia pelo Painel Master ou escaneie o QR Code oficial do estabelecimento.
+        </p>
+        <button
+          onClick={onBackToLogin}
+          className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-sm cursor-pointer transition-colors"
+        >
+          Ir para o Login
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div id="screen-client-app" className="min-h-screen bg-neutral-950 text-gray-100 flex flex-col font-sans">

@@ -1,0 +1,210 @@
+{
+  "entities": {
+    "Tenant": {
+      "title": "Tenant",
+      "description": "Barbershop tenant information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["ativa", "teste", "suspensa"] },
+        "plan": { "type": "string", "enum": ["Starter", "Pro", "Enterprise", "Vitalício"] },
+        "createdAt": { "type": "string" },
+        "monthlyRevenue": { "type": "number" },
+        "totalAppointments": { "type": "number" },
+        "themeColor": { "type": "string" },
+        "slogan": { "type": "string" },
+        "address": { "type": "string" },
+        "bairro": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "openingHours": { "type": "string" },
+        "pixKey": { "type": "string" },
+        "logoLetter": { "type": "string" },
+        "coverImage": { "type": "string" }
+      },
+      "required": ["id", "name", "slug"]
+    },
+    "Staff": {
+      "title": "Staff",
+      "description": "Barber employee/staff member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "phone": { "type": "string" },
+        "commissionRate": { "type": "number" },
+        "completedCuts": { "type": "number" },
+        "totalEarned": { "type": "number" },
+        "pendingPayout": { "type": "number" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "tenantId", "name"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "Barbershop service item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "price": { "type": "number" },
+        "loyaltyPointsAwarded": { "type": "number" },
+        "category": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "tenantId", "name", "price"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Scheduled appointment booked by a client or barber",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "clientPhone": { "type": "string" },
+        "clientId": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "serviceName": { "type": "string" },
+        "barberId": { "type": "string" },
+        "barberName": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "price": { "type": "number" },
+        "finalPrice": { "type": "number" },
+        "couponCode": { "type": "string" },
+        "status": { "type": "string", "enum": ["Confirmado", "Concluído", "Cancelado", "Pendente"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "tenantId", "clientName", "date", "time", "status"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "Customer registered in the barbershop database",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "fidelityPoints": { "type": "number" },
+        "loyaltyPoints": { "type": "number" },
+        "totalVisits": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "lastVisit": { "type": "string" }
+      },
+      "required": ["id", "tenantId", "name", "phone"]
+    },
+    "Reward": {
+      "title": "Reward",
+      "description": "Loyalty program reward item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "title": { "type": "string" },
+        "pointsCost": { "type": "number" },
+        "category": { "type": "string" },
+        "claimedCount": { "type": "number" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "tenantId", "title", "pointsCost"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Promotional coupon",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "code": { "type": "string" },
+        "discountType": { "type": "string" },
+        "discountValue": { "type": "number" },
+        "expiresAt": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "tenantId", "code"]
+    },
+    "MessageLog": {
+      "title": "MessageLog",
+      "description": "WhatsApp notification message history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "clientPhone": { "type": "string" },
+        "type": { "type": "string" },
+        "messageText": { "type": "string" },
+        "sentAt": { "type": "string" },
+        "status": { "type": "string" },
+        "simulated": { "type": "boolean" },
+        "appointmentId": { "type": "string" }
+      },
+      "required": ["id", "tenantId", "clientName", "clientPhone", "messageText"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User login record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "phone": { "type": "string" },
+        "tenantId": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/tenants/{tenantId}": {
+      "schema": "Tenant",
+      "description": "Collection of barbershop tenants"
+    },
+    "/staff/{staffId}": {
+      "schema": "Staff",
+      "description": "Staff members for all tenants"
+    },
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Services offered by barbershops"
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Booked appointments synced across devices"
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Barbershop registered clients"
+    },
+    "/rewards/{rewardId}": {
+      "schema": "Reward",
+      "description": "Loyalty rewards"
+    },
+    "/coupons/{couponId}": {
+      "schema": "Coupon",
+      "description": "Promotional coupons"
+    },
+    "/messages/{messageId}": {
+      "schema": "MessageLog",
+      "description": "WhatsApp notification logs"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "System user profiles"
+    }
+  }
+}

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BarberTenant,
   BarberStaff,
@@ -28,6 +28,13 @@ import {
   INITIAL_APPOINTMENTS,
   INITIAL_MESSAGE_LOGS,
 } from './data/mockData';
+import {
+  COLLECTIONS,
+  subscribeToCollection,
+  saveDocument,
+  deleteDocument,
+  resetDatabaseToCleanState,
+} from './firebase';
 import { SplashScreen } from './components/SplashScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { ClientRegisterScreen } from './components/ClientRegisterScreen';
@@ -43,12 +50,26 @@ export type AppScreen =
   | 'admin-tenant'
   | 'client-portal';
 
+const getInitialBarberParam = () => {
+  if (typeof window !== 'undefined') {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('barber');
+  }
+  return null;
+};
+
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<AppScreen>('splash');
+  const initialBarber = getInitialBarberParam();
+
+  // Se entrou pelo QR Code / link direto com ?barber=slug, abre DIRETO o cadastro da barbearia
+  const [currentScreen, setCurrentScreen] = useState<AppScreen>(
+    initialBarber ? 'register-client' : 'splash'
+  );
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [currentTenantId, setCurrentTenantId] = useState<string>('shop-1');
+  const [targetBarberSlug, setTargetBarberSlug] = useState<string | null>(initialBarber);
 
-  // Core database state
+  // Core cloud/database state
   const [users, setUsers] = useState<UserAccount[]>(INITIAL_USERS);
   const [tenants, setTenants] = useState<BarberTenant[]>(INITIAL_TENANTS);
   const [staff, setStaff] = useState<BarberStaff[]>(INITIAL_STAFF);
@@ -59,45 +80,173 @@ export default function App() {
   const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
   const [messageLogs, setMessageLogs] = useState<WhatsAppMessageLog[]>(INITIAL_MESSAGE_LOGS);
 
-  // Mapeia parâmetros da URL gerados pelo escaneamento do QR Code
-  React.useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const barberSlug = urlParams.get('barber');
+  // Firestore Real-time Multi-Device Synchronization (Computer <-> Cellphone)
+  useEffect(() => {
+    const unsubTenants = subscribeToCollection<BarberTenant>(
+      COLLECTIONS.TENANTS,
+      (cloudTenants) => {
+        setTenants(cloudTenants);
+        if (cloudTenants.length > 0) {
+          setCurrentTenantId((prev) => {
+            if (targetBarberSlug) {
+              const matched = cloudTenants.find(
+                (t) => t.slug.toLowerCase() === targetBarberSlug.toLowerCase() || t.id === targetBarberSlug
+              );
+              if (matched) return matched.id;
+            }
+            if (!prev || !cloudTenants.some((t) => t.id === prev)) {
+              return cloudTenants[0].id;
+            }
+            return prev;
+          });
+        }
+      }
+    );
 
-    if (barberSlug) {
-      const targetShop = tenants.find((s) => s.slug === barberSlug);
+    const unsubStaff = subscribeToCollection<BarberStaff>(
+      COLLECTIONS.STAFF,
+      (cloudStaff) => {
+        setStaff(cloudStaff);
+      }
+    );
+
+    const unsubServices = subscribeToCollection<ServiceItem>(
+      COLLECTIONS.SERVICES,
+      (cloudServices) => {
+        setServices(cloudServices);
+      }
+    );
+
+    const unsubAppointments = subscribeToCollection<Appointment>(
+      COLLECTIONS.APPOINTMENTS,
+      (cloudAppointments) => {
+        // Ordena por data e hora decrescente
+        const sorted = [...cloudAppointments].sort((a, b) => {
+          const dtA = `${a.date} ${a.time}`;
+          const dtB = `${b.date} ${b.time}`;
+          return dtB.localeCompare(dtA);
+        });
+        setAppointments(sorted);
+      }
+    );
+
+    const unsubClients = subscribeToCollection<ClientRecord>(
+      COLLECTIONS.CLIENTS,
+      (cloudClients) => {
+        setClients(cloudClients);
+      }
+    );
+
+    const unsubRewards = subscribeToCollection<LoyaltyReward>(
+      COLLECTIONS.REWARDS,
+      (cloudRewards) => {
+        setRewards(cloudRewards);
+      }
+    );
+
+    const unsubCoupons = subscribeToCollection<PromoCoupon>(
+      COLLECTIONS.COUPONS,
+      (cloudCoupons) => {
+        setCoupons(cloudCoupons);
+      }
+    );
+
+    const unsubMessages = subscribeToCollection<WhatsAppMessageLog>(
+      COLLECTIONS.MESSAGES,
+      (cloudMessages) => {
+        setMessageLogs(cloudMessages);
+      }
+    );
+
+    const unsubUsers = subscribeToCollection<UserAccount>(
+      COLLECTIONS.USERS,
+      (cloudUsers) => {
+        // Preserva o Master Admin fixo se não existir na nuvem
+        const merged = [...INITIAL_USERS];
+        cloudUsers.forEach((u) => {
+          if (!merged.some((m) => m.id === u.id || m.email.toLowerCase() === u.email.toLowerCase())) {
+            merged.push(u);
+          }
+        });
+        setUsers(merged);
+      }
+    );
+
+    return () => {
+      unsubTenants();
+      unsubStaff();
+      unsubServices();
+      unsubAppointments();
+      unsubClients();
+      unsubRewards();
+      unsubCoupons();
+      unsubMessages();
+      unsubUsers();
+    };
+  }, [targetBarberSlug]);
+
+  // Mapeia parâmetros da URL gerados pelo escaneamento do QR Code no celular
+  useEffect(() => {
+    const handleUrlCheck = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const barberSlug = urlParams.get('barber');
+
+      if (barberSlug) {
+        setTargetBarberSlug(barberSlug);
+        setCurrentScreen('register-client');
+      }
+    };
+
+    handleUrlCheck();
+    window.addEventListener('popstate', handleUrlCheck);
+    return () => window.removeEventListener('popstate', handleUrlCheck);
+  }, []);
+
+  // Quando os dados das barbearias chegam da nuvem, vincula a barbearia correspondente
+  useEffect(() => {
+    if (targetBarberSlug && tenants.length > 0) {
+      const targetShop = tenants.find(
+        (s) =>
+          s.slug.toLowerCase() === targetBarberSlug.toLowerCase() ||
+          s.id === targetBarberSlug
+      );
       if (targetShop) {
         setCurrentTenantId(targetShop.id);
-        alert(`Acessando a área exclusiva da ${targetShop.name}. Crie seu cadastro de cliente para prosseguir.`);
         setCurrentScreen('register-client');
-      } else {
-        alert('Link de QR Code inválido ou Barbearia não localizada em nossa base.');
-        setCurrentScreen('login');
       }
     }
-  }, [tenants]);
+  }, [targetBarberSlug, tenants]);
 
   const handleTestClientLink = (slug: string) => {
     const targetShop = tenants.find((s) => s.slug === slug);
     if (targetShop) {
       window.history.pushState({}, '', `?barber=${slug}`);
+      setTargetBarberSlug(slug);
       setCurrentTenantId(targetShop.id);
-      alert(`Acessando a área exclusiva da ${targetShop.name}. Crie seu cadastro de cliente para prosseguir.`);
       setCurrentScreen('register-client');
     }
   };
 
   // Active tenant getter
   const activeTenant =
-    tenants.find((t) => t.id === currentTenantId) || tenants[0];
+    tenants.find(
+      (t) =>
+        t.id === currentTenantId ||
+        (targetBarberSlug && t.slug.toLowerCase() === targetBarberSlug.toLowerCase())
+    ) || tenants[0];
 
   // Active client getter if client logged in
   const activeClient = currentUser
-    ? clients.find((c) => c.email?.toLowerCase() === currentUser.email?.toLowerCase() || c.name === currentUser.name)
+    ? clients.find(
+        (c) =>
+          c.email?.toLowerCase() === currentUser.email?.toLowerCase() ||
+          c.name === currentUser.name ||
+          (currentUser.phone && c.phone.replace(/\D/g, '') === currentUser.phone.replace(/\D/g, ''))
+      )
     : null;
 
   // Login handler
-  const handleLogin = (email: string, role: UserRole, tenantId?: string) => {
+  const handleLogin = async (email: string, role: UserRole, tenantId?: string) => {
     const cleanEmail = email.trim().toLowerCase();
     let matchedUser = users.find((u) => u.email.toLowerCase() === cleanEmail);
 
@@ -108,11 +257,11 @@ export default function App() {
           name: cleanEmail.split('@')[0],
           email: cleanEmail,
           role,
-          tenantId: tenantId || currentTenantId || 'shop-1',
+          tenantId: tenantId || currentTenantId || (tenants[0]?.id ?? 'shop-1'),
         };
-        setUsers((prev) => [...prev, matchedUser!]);
+        await saveDocument(COLLECTIONS.USERS, matchedUser.id, matchedUser);
       } else {
-        alert("E-mail não identificado. Se você é cliente, cadastre-se usando o link abaixo ou o QR Code do estabelecimento.");
+        alert('E-mail não identificado. Se você é cliente, cadastre-se usando o link abaixo ou o QR Code do estabelecimento.');
         return;
       }
     }
@@ -144,23 +293,23 @@ export default function App() {
   };
 
   // Client Registration handler
-  const handleClientRegisterSuccess = (newClient: ClientRecord) => {
-    const shopId = currentTenantId || 'tenant-1';
+  const handleClientRegisterSuccess = async (newClient: ClientRecord) => {
+    const shopId = activeTenant?.id || currentTenantId || tenants[0]?.id || 'shop-1';
     const cleanPhone = newClient.phone.replace(/\D/g, '') || newClient.phone;
-    const clientEmail = `${cleanPhone}@barber.com`;
+    const clientEmail = newClient.email || `${cleanPhone}@barber.com`;
 
-    // Corrigido: O cliente agora inicia estritamente com ZERO (0) pontos
     const newCustomer: ClientRecord = {
       ...newClient,
-      id: "cst-" + Date.now(),
+      id: 'cst-' + Date.now(),
       tenantId: shopId,
       email: clientEmail,
-      loyaltyPoints: 0, // Estritamente 0 pontos
+      loyaltyPoints: 0,
     };
 
-    setClients((prev) => [newCustomer, ...prev]);
+    // Salva cliente em tempo real no Firestore
+    await saveDocument(COLLECTIONS.CLIENTS, newCustomer.id, newCustomer);
 
-    // Create user account in users
+    // Salva conta de usuário correspondente
     const newUser: UserAccount = {
       id: `usr-${Date.now()}`,
       name: newCustomer.name,
@@ -169,17 +318,20 @@ export default function App() {
       phone: newCustomer.phone,
       tenantId: shopId,
     };
-    setUsers((prev) => [...prev, newUser]);
+    await saveDocument(COLLECTIONS.USERS, newUser.id, newUser);
 
-    // Redireciona para o login conforme especificado: showScreen('screen-login')
-    setCurrentScreen('login');
+    // Conecta imediatamente o cliente cadastrado e abre a tela de agendamento da barbearia
+    setCurrentUser(newUser);
+    setCurrentTenantId(shopId);
+    setCurrentScreen('client-portal');
   };
 
   // Master Admin Handlers
-  const handleMasterAddTenant = (newTenant: BarberTenant, tempPass: string) => {
-    setTenants((prev) => [newTenant, ...prev]);
+  const handleMasterAddTenant = async (newTenant: BarberTenant, _tempPass: string) => {
+    // 1. Salva barbearia no Firestore
+    await saveDocument(COLLECTIONS.TENANTS, newTenant.id, newTenant);
 
-    // Create tenant admin user
+    // 2. Salva usuário administrador da barbearia
     const newTenantUser: UserAccount = {
       id: `usr-${Date.now()}`,
       name: newTenant.name,
@@ -188,15 +340,15 @@ export default function App() {
       phone: newTenant.phone,
       tenantId: newTenant.id,
     };
-    setUsers((prev) => [...prev, newTenantUser]);
+    await saveDocument(COLLECTIONS.USERS, newTenantUser.id, newTenantUser);
 
-    // Seed initial basic services for this new tenant
+    // 3. Cadastra serviços padrão iniciais no Firestore
     const defaultServices: ServiceItem[] = [
       {
         id: `serv-${Date.now()}-1`,
         tenantId: newTenant.id,
         name: 'Corte Degradê / Fade',
-        description: 'Corte contemporâneo navalhado.',
+        description: 'Corte contemporâneo com acabamento na navalha.',
         durationMinutes: 40,
         price: 55,
         loyaltyPointsAwarded: 20,
@@ -207,17 +359,31 @@ export default function App() {
         id: `serv-${Date.now()}-2`,
         tenantId: newTenant.id,
         name: 'Barboterapia Toalha Quente',
-        description: 'Barba alinhada com toalha aquecida e navalha.',
+        description: 'Alinhamento completo de barba com toalha aquecida e navalha.',
         durationMinutes: 30,
         price: 45,
         loyaltyPointsAwarded: 15,
         category: 'Barba',
         isActive: true,
       },
+      {
+        id: `serv-${Date.now()}-3`,
+        tenantId: newTenant.id,
+        name: 'Combo Cabelo + Barba',
+        description: 'Pacote completo de corte degradê e barboterapia.',
+        durationMinutes: 60,
+        price: 90,
+        loyaltyPointsAwarded: 35,
+        category: 'Combo',
+        isActive: true,
+      },
     ];
-    setServices((prev) => [...prev, ...defaultServices]);
 
-    // Seed default staff
+    for (const serv of defaultServices) {
+      await saveDocument(COLLECTIONS.SERVICES, serv.id, serv);
+    }
+
+    // 4. Cadastra barbeiro padrão inicial no Firestore
     const defaultStaff: BarberStaff = {
       id: `staff-${Date.now()}`,
       tenantId: newTenant.id,
@@ -230,35 +396,41 @@ export default function App() {
       pendingPayout: 0,
       isActive: true,
     };
-    setStaff((prev) => [...prev, defaultStaff]);
+    await saveDocument(COLLECTIONS.STAFF, defaultStaff.id, defaultStaff);
   };
 
-  const handleMasterToggleStatus = (tenantId: string) => {
-    setTenants((prev) =>
-      prev.map((t) => {
-        if (t.id === tenantId) {
-          return {
-            ...t,
-            status: t.status === 'ativa' ? 'suspensa' : 'ativa',
-          };
-        }
-        return t;
-      })
-    );
+  const handleMasterToggleStatus = async (tenantId: string) => {
+    const target = tenants.find((t) => t.id === tenantId);
+    if (!target) return;
+    const newStatus = target.status === 'ativa' ? 'suspensa' : 'ativa';
+    await saveDocument(COLLECTIONS.TENANTS, tenantId, {
+      ...target,
+      status: newStatus,
+    });
   };
 
-  const handleMasterDeleteTenant = (tenantId: string) => {
+  const handleMasterDeleteTenant = async (tenantId: string) => {
     const tenantTarget = tenants.find((t) => t.id === tenantId);
     const tenantName = tenantTarget ? tenantTarget.name : 'Inquilino';
 
-    // Remove inquilino e todos os dados associados
-    setTenants((prev) => prev.filter((t) => t.id !== tenantId));
-    setUsers((prev) => prev.filter((u) => u.tenantId !== tenantId));
-    setStaff((prev) => prev.filter((s) => s.tenantId !== tenantId));
-    setServices((prev) => prev.filter((s) => s.tenantId !== tenantId));
-    setAppointments((prev) => prev.filter((a) => a.tenantId !== tenantId));
-    setCoupons((prev) => prev.filter((c) => c.tenantId !== tenantId));
-    setRewards((prev) => prev.filter((r) => r.tenantId !== tenantId));
+    // Remove do Firestore
+    await deleteDocument(COLLECTIONS.TENANTS, tenantId);
+
+    // Remove registros associados
+    const tenantStaff = staff.filter((s) => s.tenantId === tenantId);
+    for (const s of tenantStaff) await deleteDocument(COLLECTIONS.STAFF, s.id);
+
+    const tenantServs = services.filter((s) => s.tenantId === tenantId);
+    for (const sv of tenantServs) await deleteDocument(COLLECTIONS.SERVICES, sv.id);
+
+    const tenantApps = appointments.filter((a) => a.tenantId === tenantId);
+    for (const a of tenantApps) await deleteDocument(COLLECTIONS.APPOINTMENTS, a.id);
+
+    const tenantCoups = coupons.filter((c) => c.tenantId === tenantId);
+    for (const c of tenantCoups) await deleteDocument(COLLECTIONS.COUPONS, c.id);
+
+    const tenantRews = rewards.filter((r) => r.tenantId === tenantId);
+    for (const r of tenantRews) await deleteDocument(COLLECTIONS.REWARDS, r.id);
 
     if (currentTenantId === tenantId) {
       const remaining = tenants.filter((t) => t.id !== tenantId);
@@ -270,21 +442,8 @@ export default function App() {
     alert(`Barbearia "${tenantName}" excluída com sucesso!`);
   };
 
-  const handleMasterUpdateTenant = (updated: BarberTenant) => {
-    setTenants((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.tenantId === updated.id) {
-          return {
-            ...u,
-            name: updated.name,
-            email: updated.email,
-            phone: updated.phone,
-          };
-        }
-        return u;
-      })
-    );
+  const handleMasterUpdateTenant = async (updated: BarberTenant) => {
+    await saveDocument(COLLECTIONS.TENANTS, updated.id, updated);
     alert(`Barbearia "${updated.name}" atualizada com sucesso!`);
   };
 
@@ -294,80 +453,78 @@ export default function App() {
   };
 
   // Tenant Admin Handlers
-  const handleTenantAddStaff = (newStaff: BarberStaff) => {
-    setStaff((prev) => [...prev, newStaff]);
+  const handleTenantAddStaff = async (newStaff: BarberStaff) => {
+    await saveDocument(COLLECTIONS.STAFF, newStaff.id, newStaff);
   };
 
-  const handleTenantPayCommission = (staffId: string) => {
-    setStaff((prev) =>
-      prev.map((s) => {
-        if (s.id === staffId) {
-          return {
-            ...s,
-            totalEarned: s.totalEarned + s.pendingPayout,
-            pendingPayout: 0,
-          };
-        }
-        return s;
-      })
-    );
+  const handleTenantPayCommission = async (staffId: string) => {
+    const target = staff.find((s) => s.id === staffId);
+    if (!target) return;
+    await saveDocument(COLLECTIONS.STAFF, staffId, {
+      ...target,
+      totalEarned: target.totalEarned + target.pendingPayout,
+      pendingPayout: 0,
+    });
   };
 
-  const handleTenantAddService = (newService: ServiceItem) => {
-    setServices((prev) => [...prev, newService]);
+  const handleTenantAddService = async (newService: ServiceItem) => {
+    await saveDocument(COLLECTIONS.SERVICES, newService.id, newService);
   };
 
-  const handleTenantToggleService = (serviceId: string) => {
-    setServices((prev) =>
-      prev.map((s) => (s.id === serviceId ? { ...s, isActive: !s.isActive } : s))
-    );
+  const handleTenantToggleService = async (serviceId: string) => {
+    const target = services.find((s) => s.id === serviceId);
+    if (!target) return;
+    await saveDocument(COLLECTIONS.SERVICES, serviceId, {
+      ...target,
+      isActive: !target.isActive,
+    });
   };
 
-  const handleTenantAddReward = (newReward: LoyaltyReward) => {
-    setRewards((prev) => [...prev, newReward]);
+  const handleTenantAddReward = async (newReward: LoyaltyReward) => {
+    await saveDocument(COLLECTIONS.REWARDS, newReward.id, newReward);
   };
 
-  const handleTenantRedeemReward = (clientId: string, rewardId: string) => {
+  const handleTenantRedeemReward = async (clientId: string, rewardId: string) => {
     const reward = rewards.find((r) => r.id === rewardId);
-    if (!reward) return;
+    const client = clients.find((c) => c.id === clientId);
+    if (!reward || !client) return;
 
-    // Deduct points
-    setClients((prev) =>
-      prev.map((c) => {
-        if (c.id === clientId) {
-          return {
-            ...c,
-            loyaltyPoints: Math.max(0, c.loyaltyPoints - reward.pointsCost),
-          };
-        }
-        return c;
-      })
-    );
+    // Deduz pontos
+    await saveDocument(COLLECTIONS.CLIENTS, clientId, {
+      ...client,
+      loyaltyPoints: Math.max(0, client.loyaltyPoints - reward.pointsCost),
+    });
 
-    // Increment claimed count
-    setRewards((prev) =>
-      prev.map((r) => (r.id === rewardId ? { ...r, claimedCount: r.claimedCount + 1 } : r))
-    );
+    // Incrementa contagem de resgates
+    await saveDocument(COLLECTIONS.REWARDS, rewardId, {
+      ...reward,
+      claimedCount: reward.claimedCount + 1,
+    });
   };
 
-  const handleTenantAddCoupon = (newCoupon: PromoCoupon) => {
-    setCoupons((prev) => [...prev, newCoupon]);
+  const handleTenantAddCoupon = async (newCoupon: PromoCoupon) => {
+    await saveDocument(COLLECTIONS.COUPONS, newCoupon.id, newCoupon);
   };
 
-  const handleTenantToggleCoupon = (code: string) => {
-    setCoupons((prev) =>
-      prev.map((c) => (c.code === code ? { ...c, isActive: !c.isActive } : c))
-    );
+  const handleTenantToggleCoupon = async (code: string) => {
+    const target = coupons.find((c) => c.code === code);
+    if (!target) return;
+    await saveDocument(COLLECTIONS.COUPONS, target.id, {
+      ...target,
+      isActive: !target.isActive,
+    });
   };
 
-  const handleTenantAddClient = (newClient: ClientRecord) => {
-    setClients((prev) => [...prev, newClient]);
+  const handleTenantAddClient = async (newClient: ClientRecord) => {
+    await saveDocument(COLLECTIONS.CLIENTS, newClient.id, newClient);
   };
 
-  const handleAddAppointment = (newApp: Appointment) => {
-    setAppointments((prev) => [newApp, ...prev]);
+  // Appointment handler - Multi-device Real-time write!
+  const handleAddAppointment = async (newApp: Appointment) => {
+    // 1. Salva no Firestore. O notebook da barbearia recebe instantaneamente via onSnapshot
+    await saveDocument(COLLECTIONS.APPOINTMENTS, newApp.id, newApp);
 
-    // Registra notificação automática de confirmação de agendamento no histórico WhatsApp
+    // 2. Registra notificação automática de confirmação no histórico WhatsApp
     const autoMsg: WhatsAppMessageLog = {
       id: `msg-auto-${Date.now()}`,
       tenantId: newApp.tenantId,
@@ -380,9 +537,9 @@ export default function App() {
       simulated: true,
       appointmentId: newApp.id,
     };
-    setMessageLogs((prev) => [autoMsg, ...prev]);
+    await saveDocument(COLLECTIONS.MESSAGES, autoMsg.id, autoMsg);
 
-    // Check if client exists in client list, otherwise create
+    // 3. Cadastra ou atualiza o cliente na base
     const existing = clients.find(
       (c) => c.phone.replace(/\D/g, '') === newApp.clientPhone.replace(/\D/g, '')
     );
@@ -397,76 +554,64 @@ export default function App() {
         totalSpent: newApp.finalPrice,
         lastVisit: newApp.date,
       };
-      setClients((prev) => [...prev, newCli]);
+      await saveDocument(COLLECTIONS.CLIENTS, newCli.id, newCli);
     }
   };
 
-  const handleSendMessage = (newLog: WhatsAppMessageLog) => {
-    setMessageLogs((prev) => [newLog, ...prev]);
+  const handleSendMessage = async (newLog: WhatsAppMessageLog) => {
+    await saveDocument(COLLECTIONS.MESSAGES, newLog.id, newLog);
   };
 
-  const handleDeleteMessage = (id: string) => {
-    setMessageLogs((prev) => prev.filter((m) => m.id !== id));
+  const handleDeleteMessage = async (id: string) => {
+    await deleteDocument(COLLECTIONS.MESSAGES, id);
   };
 
-  const handleUpdateAppointmentStatus = (id: string, newStatus: AppointmentStatus) => {
-    setAppointments((prev) =>
-      prev.map((a) => {
-        if (a.id === id) {
-          return { ...a, status: newStatus };
-        }
-        return a;
-      })
-    );
-
+  const handleUpdateAppointmentStatus = async (id: string, newStatus: AppointmentStatus) => {
     const app = appointments.find((a) => a.id === id);
-    if (app && newStatus === 'Concluído') {
-      // 1. Credit barber staff commission and count
+    if (!app) return;
+
+    // Atualiza status no Firestore (sincroniza de volta para o celular)
+    await saveDocument(COLLECTIONS.APPOINTMENTS, id, {
+      ...app,
+      status: newStatus,
+    });
+
+    if (newStatus === 'Concluído') {
+      // 1. Credita comissão do barbeiro
       const staffMember = staff.find((s) => s.id === app.barberId);
       if (staffMember) {
         const commAmt = (app.finalPrice * staffMember.commissionRate) / 100;
-        setStaff((prev) =>
-          prev.map((s) => {
-            if (s.id === app.barberId) {
-              return {
-                ...s,
-                completedCuts: s.completedCuts + 1,
-                pendingPayout: s.pendingPayout + commAmt,
-              };
-            }
-            return s;
-          })
-        );
+        await saveDocument(COLLECTIONS.STAFF, app.barberId, {
+          ...staffMember,
+          completedCuts: staffMember.completedCuts + 1,
+          pendingPayout: staffMember.pendingPayout + commAmt,
+        });
       }
 
-      // 2. Credit client loyalty points and spend
+      // 2. Credita pontos de fidelidade do cliente
       const matchingClient = clients.find(
         (c) => c.phone.replace(/\D/g, '') === app.clientPhone.replace(/\D/g, '')
       );
       if (matchingClient) {
         const awardedPoints = app.finalPrice >= 80 ? 30 : 20;
-        setClients((prev) =>
-          prev.map((c) => {
-            if (c.id === matchingClient.id) {
-              return {
-                ...c,
-                totalVisits: c.totalVisits + 1,
-                totalSpent: c.totalSpent + app.finalPrice,
-                loyaltyPoints: c.loyaltyPoints + awardedPoints,
-                lastVisit: app.date,
-              };
-            }
-            return c;
-          })
-        );
+        await saveDocument(COLLECTIONS.CLIENTS, matchingClient.id, {
+          ...matchingClient,
+          totalVisits: matchingClient.totalVisits + 1,
+          totalSpent: matchingClient.totalSpent + app.finalPrice,
+          loyaltyPoints: matchingClient.loyaltyPoints + awardedPoints,
+          lastVisit: app.date,
+        });
       }
     }
   };
 
-  const handleUpdateTenantConfig = (updated: Partial<BarberTenant>) => {
-    setTenants((prev) =>
-      prev.map((t) => (t.id === currentTenantId ? { ...t, ...updated } : t))
-    );
+  const handleUpdateTenantConfig = async (updated: Partial<BarberTenant>) => {
+    const target = tenants.find((t) => t.id === currentTenantId);
+    if (!target) return;
+    await saveDocument(COLLECTIONS.TENANTS, currentTenantId, {
+      ...target,
+      ...updated,
+    });
   };
 
   const handleOpenClientPortal = (slug: string) => {
@@ -477,26 +622,56 @@ export default function App() {
     setCurrentScreen('client-portal');
   };
 
+  // Reset/Limpeza total dos dados fictícios
+  const handleResetDatabase = async () => {
+    try {
+      await resetDatabaseToCleanState();
+      setTenants([]);
+      setStaff([]);
+      setServices([]);
+      setAppointments([]);
+      setClients([]);
+      setRewards([]);
+      setCoupons([]);
+      setMessageLogs([]);
+      alert('Todo o sistema e banco de dados foram reinicializados! Todos os dados fictícios foram excluídos com sucesso.');
+    } catch (err) {
+      console.error('Erro ao resetar banco:', err);
+      alert('Ocorreu um erro ao resetar o banco de dados. Tente novamente.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100">
       {/* 1ª TELA: SPLASH SCREEN (5 SEGUNDOS OU PULAR) */}
       {currentScreen === 'splash' && (
-        <SplashScreen onFinish={() => setCurrentScreen('login')} />
+        <SplashScreen
+          onFinish={() => {
+            const barberParam = getInitialBarberParam();
+            if (barberParam) {
+              setCurrentScreen('register-client');
+            } else {
+              setCurrentScreen('login');
+            }
+          }}
+        />
       )}
 
       {/* 2ª TELA: LOGIN E SELEÇÃO DE PERFIL */}
       {currentScreen === 'login' && (
         <LoginScreen
+          tenants={tenants}
           onLogin={handleLogin}
           onNavigateToRegister={() => setCurrentScreen('register-client')}
           onNavigateToClientPortal={() => setCurrentScreen('client-portal')}
         />
       )}
 
-      {/* TELA: CADASTRO DE CLIENTE */}
+      {/* TELA: CADASTRO DE CLIENTE EXCLUSIVO DA BARBEARIA */}
       {currentScreen === 'register-client' && (
         <ClientRegisterScreen
-          tenantId={currentTenantId}
+          tenantId={activeTenant?.id || currentTenantId}
+          tenant={activeTenant}
           onSuccess={handleClientRegisterSuccess}
           onBackToLogin={() => setCurrentScreen('login')}
         />
@@ -512,6 +687,7 @@ export default function App() {
           onUpdateTenant={handleMasterUpdateTenant}
           onImpersonateTenant={handleMasterImpersonate}
           onTestClientLink={handleTestClientLink}
+          onResetDatabase={handleResetDatabase}
           onLogout={handleLogout}
         />
       )}
@@ -522,42 +698,26 @@ export default function App() {
           tenant={activeTenant}
           allTenants={tenants}
           onSelectTenant={(id) => setCurrentTenantId(id)}
-          staffList={
-            staff.filter((s) => s.tenantId === currentTenantId).length > 0
-              ? staff.filter((s) => s.tenantId === currentTenantId)
-              : staff.filter((s) => s.tenantId === 'shop-1')
-          }
+          staffList={staff.filter((s) => s.tenantId === currentTenantId)}
           onAddStaff={handleTenantAddStaff}
           onPayCommission={handleTenantPayCommission}
-          servicesList={
-            services.filter((s) => s.tenantId === currentTenantId).length > 0
-              ? services.filter((s) => s.tenantId === currentTenantId)
-              : services.filter((s) => s.tenantId === 'shop-1')
-          }
+          servicesList={services.filter((s) => s.tenantId === currentTenantId)}
           onAddService={handleTenantAddService}
           onToggleService={handleTenantToggleService}
-          rewardsList={
-            rewards.filter((r) => r.tenantId === currentTenantId).length > 0
-              ? rewards.filter((r) => r.tenantId === currentTenantId)
-              : rewards.filter((r) => r.tenantId === 'shop-1')
-          }
+          rewardsList={rewards.filter((r) => r.tenantId === currentTenantId)}
           onAddReward={handleTenantAddReward}
           onRedeemReward={handleTenantRedeemReward}
-          couponsList={
-            coupons.filter((c) => c.tenantId === currentTenantId).length > 0
-              ? coupons.filter((c) => c.tenantId === currentTenantId)
-              : coupons.filter((c) => c.tenantId === 'shop-1')
-          }
+          couponsList={coupons.filter((c) => c.tenantId === currentTenantId)}
           onAddCoupon={handleTenantAddCoupon}
           onToggleCoupon={handleTenantToggleCoupon}
-          clientsList={clients.filter((c) => c.tenantId === currentTenantId || c.tenantId === 'shop-1')}
+          clientsList={clients.filter((c) => c.tenantId === currentTenantId)}
           onAddClient={handleTenantAddClient}
-          appointments={appointments.filter((a) => a.tenantId === currentTenantId || a.tenantId === 'shop-1')}
+          appointments={appointments.filter((a) => a.tenantId === currentTenantId)}
           onAddAppointment={handleAddAppointment}
           onUpdateAppointmentStatus={handleUpdateAppointmentStatus}
           onUpdateTenantConfig={handleUpdateTenantConfig}
           onOpenClientPortal={handleOpenClientPortal}
-          messageLogs={messageLogs}
+          messageLogs={messageLogs.filter((m) => m.tenantId === currentTenantId)}
           onSendMessage={handleSendMessage}
           onDeleteMessage={handleDeleteMessage}
           onLogout={handleLogout}
@@ -570,30 +730,14 @@ export default function App() {
           tenant={activeTenant}
           allTenants={tenants}
           onSelectTenant={(id) => setCurrentTenantId(id)}
-          staffList={
-            staff.filter((s) => s.tenantId === currentTenantId).length > 0
-              ? staff.filter((s) => s.tenantId === currentTenantId)
-              : staff.filter((s) => s.tenantId === 'shop-1')
-          }
-          servicesList={
-            services.filter((s) => s.tenantId === currentTenantId && s.isActive).length > 0
-              ? services.filter((s) => s.tenantId === currentTenantId && s.isActive)
-              : services.filter((s) => s.tenantId === 'shop-1' && s.isActive)
-          }
-          rewardsList={
-            rewards.filter((r) => r.tenantId === currentTenantId).length > 0
-              ? rewards.filter((r) => r.tenantId === currentTenantId)
-              : rewards.filter((r) => r.tenantId === 'shop-1')
-          }
-          couponsList={
-            coupons.filter((c) => c.tenantId === currentTenantId && c.isActive).length > 0
-              ? coupons.filter((c) => c.tenantId === currentTenantId && c.isActive)
-              : coupons.filter((c) => c.tenantId === 'shop-1' && c.isActive)
-          }
+          staffList={staff.filter((s) => s.tenantId === currentTenantId)}
+          servicesList={services.filter((s) => s.tenantId === currentTenantId && s.isActive)}
+          rewardsList={rewards.filter((r) => r.tenantId === currentTenantId)}
+          couponsList={coupons.filter((c) => c.tenantId === currentTenantId && c.isActive)}
           clientUser={activeClient}
-          allTenantAppointments={appointments.filter((a) => a.tenantId === currentTenantId || a.tenantId === 'shop-1')}
+          allTenantAppointments={appointments.filter((a) => a.tenantId === currentTenantId)}
           clientAppointments={appointments.filter((a) => {
-            if (a.tenantId !== currentTenantId && a.tenantId !== 'shop-1') return false;
+            if (a.tenantId !== currentTenantId) return false;
             if (activeClient) {
               return (
                 a.clientId === activeClient.id ||

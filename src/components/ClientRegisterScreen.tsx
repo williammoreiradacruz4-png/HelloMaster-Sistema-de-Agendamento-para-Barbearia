@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
-import { User, Phone, MapPin, Search, ArrowLeft, CheckCircle2, ShieldCheck, Mail, Lock } from 'lucide-react';
-import { ClientRecord } from '../types/barber';
+import { User, Phone, MapPin, Search, ArrowLeft, CheckCircle2, ShieldCheck, Mail, Lock, Store } from 'lucide-react';
+import { ClientRecord, BarberTenant } from '../types/barber';
 
 interface ClientRegisterScreenProps {
   tenantId?: string;
+  tenant?: BarberTenant;
   onSuccess: (newClient: ClientRecord) => void;
   onBackToLogin: () => void;
 }
 
 export const ClientRegisterScreen: React.FC<ClientRegisterScreenProps> = ({
   tenantId,
+  tenant,
   onSuccess,
   onBackToLogin,
 }) => {
@@ -83,19 +85,17 @@ export const ClientRegisterScreen: React.FC<ClientRegisterScreenProps> = ({
     setError(null);
 
     if (!name.trim() || !phone.trim()) {
-      alert("Nome e Contato são obrigatórios.");
-      setError("Nome e Contato são obrigatórios.");
+      setError('Nome e Contato/WhatsApp são obrigatórios.');
       return;
     }
 
     const cleanPhone = phone.trim().replace(/\D/g, '') || phone.trim();
-    const loginEmail = `${cleanPhone}@barber.com`;
-    const formattedAddress = `${address}, ${bairro}, ${city}-${state} (CEP: ${cep})`;
+    const loginEmail = email.trim() || `${cleanPhone}@barber.com`;
+    const formattedAddress = address ? `${address}, ${bairro}, ${city}-${state} (CEP: ${cep})` : '';
 
-    // Corrigido: O cliente agora inicia estritamente com ZERO (0) pontos
     const newCustomer: ClientRecord = {
-      id: "cst-" + Date.now(),
-      tenantId: tenantId || 'shop-1',
+      id: 'cst-' + Date.now(),
+      tenantId: tenant?.id || tenantId || 'shop-1',
       name: name.trim(),
       phone: phone.trim(),
       email: loginEmail,
@@ -104,14 +104,13 @@ export const ClientRegisterScreen: React.FC<ClientRegisterScreenProps> = ({
       bairro: bairro.trim(),
       city: city.trim(),
       state: state.trim(),
-      loyaltyPoints: 0, // Corrigido: O cliente agora inicia estritamente com ZERO (0) pontos
+      loyaltyPoints: 0,
       totalVisits: 0,
       totalSpent: 0,
-      notes: `Endereço: ${formattedAddress}`,
+      notes: formattedAddress ? `Endereço: ${formattedAddress}` : '',
     };
 
     onSuccess(newCustomer);
-    alert(`Cadastro efetuado com sucesso!\nFaça login utilizando o e-mail: ${cleanPhone}@barber.com`);
   };
 
   return (
@@ -119,6 +118,24 @@ export const ClientRegisterScreen: React.FC<ClientRegisterScreenProps> = ({
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(217,119,6,0.1)_0%,transparent_60%)] pointer-events-none" />
 
       <div className="bg-neutral-900 border border-neutral-800 p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-xl my-8 relative z-10">
+        {/* Barbershop Identity Badge if arrived via QR Code */}
+        {tenant && (
+          <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-xl bg-amber-500 text-neutral-950 font-black text-xl flex items-center justify-center shrink-0 shadow-md">
+              {tenant.logoLetter || tenant.name.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider block">
+                Agendamento Online
+              </span>
+              <h3 className="text-base font-bold text-white truncate">{tenant.name}</h3>
+              <p className="text-xs text-neutral-400 truncate">
+                {tenant.address || 'Cadastre-se para agendar seu horário com nossa equipe'}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 mb-3">
@@ -126,7 +143,9 @@ export const ClientRegisterScreen: React.FC<ClientRegisterScreenProps> = ({
           </div>
           <h2 className="text-2xl font-bold font-display text-white">Cadastro de Cliente</h2>
           <p className="text-xs text-neutral-400 mt-1">
-            Crie sua conta para agendar e gerenciar seus horários
+            {tenant
+              ? `Crie sua conta para agendar horários na ${tenant.name}`
+              : 'Crie sua conta para agendar e gerenciar seus horários'}
           </p>
         </div>
 

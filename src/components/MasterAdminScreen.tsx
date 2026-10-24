@@ -35,6 +35,7 @@ interface MasterAdminScreenProps {
   onUpdateTenant?: (updatedTenant: BarberTenant) => void;
   onImpersonateTenant: (tenantId: string) => void;
   onTestClientLink?: (slug: string) => void;
+  onResetDatabase?: () => void;
   onLogout: () => void;
 }
 
@@ -46,6 +47,7 @@ export const MasterAdminScreen: React.FC<MasterAdminScreenProps> = ({
   onUpdateTenant,
   onImpersonateTenant,
   onTestClientLink,
+  onResetDatabase,
   onLogout,
 }) => {
   const [name, setName] = useState('');
@@ -209,16 +211,38 @@ Plano: ${createdTenantData.tenant.plan}`;
       <header className="bg-neutral-950 border-b border-neutral-800 text-white p-4 flex justify-between items-center shadow-md sticky top-0 z-20">
         <div className="flex items-center space-x-3">
           <img src={logoHelloMaster} alt="HelloMaster" className="h-10 w-auto object-contain" />
-          <span className="text-lg font-bold tracking-wide">
-            Painel <span className="text-amber-500">Master</span>
-          </span>
+          <div>
+            <span className="text-lg font-bold tracking-wide">
+              Painel <span className="text-amber-500">Master</span>
+            </span>
+            <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Firestore Sync Ativo (Multi-Dispositivo)</span>
+            </div>
+          </div>
         </div>
-        <button
-          onClick={onLogout}
-          className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer"
-        >
-          Sair do Sistema
-        </button>
+        <div className="flex items-center gap-2">
+          {onResetDatabase && (
+            <button
+              onClick={() => {
+                if (window.confirm("Atenção: Deseja realmente zerar todos os dados fictícios do sistema (barbearias, serviços, agendamentos, etc.) no Firestore e restaurar o estado limpo?")) {
+                  onResetDatabase();
+                }
+              }}
+              title="Zerar todos os dados de teste e começar do zero"
+              className="bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-amber-400 border border-neutral-800 hover:border-amber-500/40 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Limpar Dados Fictícios</span>
+            </button>
+          )}
+          <button
+            onClick={onLogout}
+            className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer"
+          >
+            Sair do Sistema
+          </button>
+        </div>
       </header>
 
       {/* Main Content */}
@@ -844,32 +868,49 @@ Plano: ${createdTenantData.tenant.plan}`;
                 Escaneie para agendar horário online
               </p>
 
-              {/* QR Code Container */}
+              {/* QR Code Container com Canvas Real */}
               <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 inline-block mx-auto mb-4 shadow-inner">
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=8&data=${encodeURIComponent(
-                    `https://barbersaas.com/${selectedQrTenant.slug}`
-                  )}`}
-                  alt={`QR Code para ${selectedQrTenant.name}`}
-                  className="w-48 h-48 rounded-lg mx-auto"
+                <QRCodeCanvas
+                  value={
+                    typeof window !== 'undefined'
+                      ? `${window.location.origin}${window.location.pathname}?barber=${selectedQrTenant.slug}`
+                      : `?barber=${selectedQrTenant.slug}`
+                  }
+                  size={200}
                 />
               </div>
 
-              <div className="text-xs font-mono text-gray-600 bg-gray-100 py-1.5 px-3 rounded-lg border border-gray-200 mb-4 break-all">
-                https://barbersaas.com/{selectedQrTenant.slug}
+              <div className="text-xs font-mono text-gray-600 bg-gray-100 py-1.5 px-3 rounded-lg border border-gray-200 mb-4 break-all select-all">
+                {typeof window !== 'undefined'
+                  ? `${window.location.origin}${window.location.pathname}?barber=${selectedQrTenant.slug}`
+                  : `?barber=${selectedQrTenant.slug}`}
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(`https://barbersaas.com/${selectedQrTenant.slug}`);
+                    const url = `${window.location.origin}${window.location.pathname}?barber=${selectedQrTenant.slug}`;
+                    navigator.clipboard.writeText(url);
                     setCopiedQrUrl(true);
                     setTimeout(() => setCopiedQrUrl(false), 2000);
                   }}
                   className="flex-1 py-2 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
                   {copiedQrUrl ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedQrUrl ? 'Copiado!' : 'Copiar Link'}</span>
+                  <span>{copiedQrUrl ? 'Link Copiado!' : 'Copiar Link'}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (onTestClientLink) {
+                      onTestClientLink(selectedQrTenant.slug);
+                      setSelectedQrTenant(null);
+                    }
+                  }}
+                  className="py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-neutral-950 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Abrir Cadastro</span>
                 </button>
 
                 <button
